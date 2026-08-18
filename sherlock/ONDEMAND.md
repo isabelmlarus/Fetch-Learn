@@ -109,6 +109,22 @@ That file should have the original columns plus **`catGRANULE2`**.
 
 ---
 
+## If the job ran ~1 hour and wrote no Excel (`KeyError` / missing scale columns)
+
+Git tag `v1.0.0` is missing ~29 JSON files (including `charge.json`). Update the code and catGRANULE clone, then resubmit:
+
+```bash
+cd $SCRATCH/Fetch-Learn
+git pull
+sh_dev -c 4 -t 1:00:00
+bash sherlock/setup_env.sh
+exit
+cd $SCRATCH/Fetch-Learn
+sbatch sherlock/smoke.sbatch
+```
+
+Setup should print `Scale JSON files: 82` (or more). If it is still ~53, stop and paste that line.
+
 ## If something fails
 
 - `git clone` asks for a password: the repo is public; use the HTTPS URL above, not SSH.

@@ -6,9 +6,9 @@
 #
 #SBATCH --job-name=catGRANULE2
 #SBATCH --partition=normal
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=32G
+#SBATCH --time=48:00:00
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=48G
 #SBATCH --output=logs/catGRANULE2-%j.out
 #SBATCH --error=logs/catGRANULE2-%j.err
 
@@ -18,6 +18,14 @@ REPO_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 VENV_DIR="${FETCH_LEARN_VENV:-${SCRATCH:-$HOME}/fetch-learn-venv}"
 INPUT="${INPUT_XLSX:-${REPO_DIR}/data/inputs/Input_260818.xlsx}"
 OUTPUT="${OUTPUT_XLSX:-${REPO_DIR}/data/outputs/Input_260818_catGRANULE2.xlsx}"
+CAT_SRC="${REPO_DIR}/vendor/catGRANULE2.0"
+if [[ -n "${L_SCRATCH:-}" && -d "${L_SCRATCH}" ]]; then
+  echo "Copying catGRANULE onto node-local disk ${L_SCRATCH}"
+  rsync -a "${CAT_SRC}/" "${L_SCRATCH}/catGRANULE2.0/"
+  CAT_DIR="${L_SCRATCH}/catGRANULE2.0"
+else
+  CAT_DIR="${CAT_SRC}"
+fi
 
 cd "$REPO_DIR"
 mkdir -p logs data/outputs
@@ -38,5 +46,5 @@ python -u src/fetch_catgranule.py \
   --input "$INPUT" \
   --output "$OUTPUT" \
   --sequence-column Protein_sequence \
-  --catgranule-dir "${REPO_DIR}/vendor/catGRANULE2.0" \
-  --batch-size 64
+  --catgranule-dir "${CAT_DIR}" \
+  --batch-size 32

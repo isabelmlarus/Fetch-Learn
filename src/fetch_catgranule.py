@@ -123,13 +123,17 @@ def import_catgranule(catgranule_dir: Path):
             f"catGRANULE directory not found: {catgranule_dir}\n"
             "On Sherlock run: bash sherlock/setup_env.sh"
         )
-    scales = catgranule_dir / "src" / "ChemicalPhysicalScales_Py_dictionary"
-    source = catgranule_dir / "ChemicalPhysicalScales_Py_dictionary"
-    if not scales.exists():
-        if source.exists():
-            scales.symlink_to(source, target_is_directory=True)
-        else:
-            raise SystemExit(f"Missing chemical/physical scales folder in {catgranule_dir}")
+    src_scales = catgranule_dir / "src" / "ChemicalPhysicalScales_Py_dictionary"
+    root_scales = catgranule_dir / "ChemicalPhysicalScales_Py_dictionary"
+    json_count = len(list(src_scales.glob("*.json"))) if src_scales.exists() else 0
+    if root_scales.exists() and (not src_scales.exists() or src_scales.is_symlink() or json_count < 82):
+        import shutil
+
+        if src_scales.is_symlink():
+            src_scales.unlink()
+        elif src_scales.exists():
+            shutil.rmtree(src_scales)
+        shutil.copytree(root_scales, src_scales)
 
     os.chdir(catgranule_dir)
     if str(catgranule_dir) not in sys.path:
@@ -141,7 +145,29 @@ def import_catgranule(catgranule_dir: Path):
     from catgranuleFunctions import get_physical_chemical_properties, predict
     from compute_profiles_and_predictions import correct_order_columns
 
+    present = {path.stem for path in Path("src/ChemicalPhysicalScales_Py_dictionary").glob("*.json")}
+    missing = [name for name in list(correct_order_columns[:82]) if name not in present]
+    if missing:
+        raise SystemExit(
+            "catGRANULE scale files are incomplete (git tag v1.0.0 is missing files). "
+            f"Missing {len(missing)}, e.g. {missing[:5]}. "
+            "On Sherlock: cd $SCRATCH/Fetch-Learn && git pull && bash sherlock/setup_env.sh"
+        )
+    print(f"Found {len(present)} scale JSON files.", flush=True)
+
     return get_physical_chemical_properties, predict, correct_order_columns
+
+
+def ensure_scale_columns(pc_df, correct_order_columns):
+    needed = list(correct_order_columns[:82])
+    missing = [name for name in needed if name not in pc_df.columns]
+    if missing:
+        raise SystemExit(
+            "catGRANULE scale files are incomplete. Missing "
+            f"{len(missing)} columns, including {missing[:5]}. "
+            "On Sherlock run: cd $SCRATCH/Fetch-Learn && git pull && bash sherlock/setup_env.sh"
+        )
+    return pc_df[needed]
 
 
 def score_sequences(
@@ -152,10 +178,14 @@ def score_sequences(
     predict,
     correct_order_columns,
 ) -> list[float]:
-    scales_dir = str(catgranule_dir / "src" / "ChemicalPhysicalScales_Py_dictionary")
-    classifiers_dir = str(catgranule_dir / "src" / "TRAINED_MODELS") + "/"
+    # Relative paths: catGRANULE's predict() hardcodes ./src/TRAINED_MODELS/
+    scales_dir = "./src/ChemicalPhysicalScales_Py_dictionary"
+    classifiers_dir = "./src/TRAINED_MODELS/"
+    json_files = list(Path(scales_dir).glob("*.json"))
+    print(f"Using {len(json_files)} scale JSON files from {Path(scales_dir).resolve()}", flush=True)
     pc_df = get_physical_chemical_properties(sequences, ids, scales_dir)
-    pc_df = pc_df[correct_order_columns[:82]]
+    pc_df.columns = [Path(str(col)).stem for col in pc_df.columns]
+    pc_df = ensure_scale_columns(pc_df, correct_order_columns)
     predictions = predict(pc_df, classifiers_dir, only_pc=True)
     return [float(x) for x in predictions["RandomForest"]]
 
