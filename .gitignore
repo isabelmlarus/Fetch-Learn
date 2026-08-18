@@ -1,0 +1,24 @@
+# Data stays on Dropbox, not GitHub
+data/inputs/
+data/outputs/
+*.xlsx
+*.xls
+*.csv
+
+# catGRANULE 2.0 clone and Python env (created on Sherlock)
+vendor/
+.venv/
+venv/
+env/
+
+# Logs and checkpoints
+logs/
+*.out
+*.err
+*.checkpoint.csv
+
+# Python / OS
+__pycache__/
+*.pyc
+.DS_Store
+.python-version
