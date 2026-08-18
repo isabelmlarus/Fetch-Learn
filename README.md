@@ -4,13 +4,13 @@ This repository is for pulling additional ORFeome annotations and learning how t
 
 **Code lives on GitHub. Excel inputs and outputs live on Dropbox. Scoring runs on Stanford Sherlock.**
 
+Dropbox is **not** mounted on Sherlock. You clone the code from GitHub, then **upload** the Excel through Sherlock OnDemand Files.
+
 | Place | What belongs there |
 | --- | --- |
 | [GitHub](https://github.com/isabelmlarus/Fetch-Learn) | Python scripts, Sherlock job files, this README |
 | Dropbox `Fetch-Learn/data/` | `Input_260818.xlsx` and the annotated output Excel |
 | Sherlock `$SCRATCH/Fetch-Learn` | A copy of the code plus the Excel, used only to compute |
-
-GitHub is a history of the *code*. Dropbox is the working copy of *data*. Sherlock is the computer that is fast enough for ~15,000 sequences.
 
 ## GitHub in one page
 
@@ -19,8 +19,6 @@ GitHub is a history of the *code*. Dropbox is the working copy of *data*. Sherlo
 - **Remote (`origin`):** GitHub, at `https://github.com/isabelmlarus/Fetch-Learn`.
 - **Push:** send commits from your Mac to GitHub.
 - **`.gitignore`:** tells git to skip Dropbox data (`data/inputs`, `data/outputs`, Excel files) so sequences never go to GitHub.
-
-You do not need Cursor’s GitHub plugin for this. `git` in the terminal is enough.
 
 ## What the script does
 
@@ -36,37 +34,45 @@ Invalid or empty sequences are left blank in `catGRANULE2`. Trailing `*` stop si
 
 Software: [catGRANULE 2.0](https://github.com/tartaglialabIIT/catGRANULE2.0) / [Zenodo 19691228](https://zenodo.org/records/19691228).
 
-## Dropbox layout
+## Run on Sherlock (OnDemand)
 
-```
-Fetch-Learn/
-  src/fetch_catgranule.py      # on GitHub
-  sherlock/                    # on GitHub
-  data/inputs/Input_260818.xlsx          # Dropbox only
-  data/outputs/Input_260818_catGRANULE2.xlsx  # Dropbox only, after the job
-```
+Use the **OnDemand website terminal**, not SSH from your Mac. Full copy-paste steps: [`sherlock/ONDEMAND.md`](sherlock/ONDEMAND.md).
 
-## Run on Sherlock
+Short version:
 
-Sherlock login is password + Duo, so submit from Terminal.app:
+1. In the OnDemand terminal, clone the GitHub repo into scratch (this is the code; it does not include the Excel):
 
-```bash
-# on your Mac, from this folder
-bash sherlock/sync_to_sherlock.sh
-```
+   ```bash
+   cd $SCRATCH
+   git clone https://github.com/isabelmlarus/Fetch-Learn.git
+   mkdir -p $SCRATCH/Fetch-Learn/data/inputs $SCRATCH/Fetch-Learn/data/outputs
+   ```
 
-Then in the SSH session the script prints:
+2. In OnDemand **Files**, upload Dropbox file  
+   `Fetch-Learn/data/inputs/Input_260818.xlsx`  
+   into Sherlock `$SCRATCH/Fetch-Learn/data/inputs/`.
 
-1. `sh_dev -c 4 -t 1:00:00` and `bash sherlock/setup_env.sh` (once)
-2. `sbatch sherlock/smoke.sbatch` (10 sequences)
-3. `sbatch sherlock/run_catgranule.sbatch` (all ~15,482 sequences)
+3. Back in the OnDemand terminal, build the environment on a **dev node** (do not pip-install on the login node):
 
-Copy the result back to Dropbox:
+   ```bash
+   cd $SCRATCH/Fetch-Learn
+   sh_dev -c 4 -t 1:00:00
+   bash sherlock/setup_env.sh
+   exit
+   ```
 
-```bash
-scp "$USER@login.sherlock.stanford.edu:\$SCRATCH/Fetch-Learn/data/outputs/Input_260818_catGRANULE2.xlsx" \
-  data/outputs/
-```
+4. Submit jobs from the OnDemand terminal (login node is OK for `sbatch`):
+
+   ```bash
+   cd $SCRATCH/Fetch-Learn
+   sbatch sherlock/smoke.sbatch
+   squeue -u $USER
+   sbatch sherlock/run_catgranule.sbatch
+   ```
+
+5. When the full job finishes, download  
+   `$SCRATCH/Fetch-Learn/data/outputs/Input_260818_catGRANULE2.xlsx`  
+   with OnDemand **Files** into your Mac Dropbox folder `Fetch-Learn/data/outputs/`.
 
 Setup uses Python **3.9 or 3.10** because the published models need `scikit-learn==1.1.1`.
 

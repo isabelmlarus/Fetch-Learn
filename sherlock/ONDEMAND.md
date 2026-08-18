@@ -1,0 +1,117 @@
+# Sherlock OnDemand instructions
+
+Use this if you are already in a **Sherlock OnDemand terminal** in the browser. You do not need SSH from your Mac.
+
+Dropbox is not on Sherlock. GitHub has the **code**. You must **upload** the Excel separately.
+
+Your input file on the Mac:
+
+`/Users/isabellarus/Library/CloudStorage/Dropbox/Fetch-Learn/data/inputs/Input_260818.xlsx`
+
+---
+
+## 1. Clone the code from GitHub
+
+Paste this in the OnDemand terminal:
+
+```bash
+cd $SCRATCH
+git clone https://github.com/isabelmlarus/Fetch-Learn.git
+mkdir -p $SCRATCH/Fetch-Learn/data/inputs $SCRATCH/Fetch-Learn/data/outputs $SCRATCH/Fetch-Learn/logs
+ls $SCRATCH/Fetch-Learn
+```
+
+You should see `src`, `sherlock`, `README.md`, and `requirements.txt`. You will **not** see the Excel yet. That is expected: Excel is not on GitHub.
+
+If `Fetch-Learn` already exists from an earlier try:
+
+```bash
+cd $SCRATCH/Fetch-Learn
+git pull
+```
+
+---
+
+## 2. Upload the Excel (OnDemand Files, not the terminal)
+
+1. In the OnDemand site, open **Files** (leave the terminal tab open).
+2. Click **Go To** (or the path bar) and enter: `$SCRATCH/Fetch-Learn/data/inputs`
+3. Click **Upload**.
+4. Choose `Input_260818.xlsx` from your Mac Dropbox `Fetch-Learn/data/inputs/` folder.
+
+Check in the terminal:
+
+```bash
+ls -lh $SCRATCH/Fetch-Learn/data/inputs/Input_260818.xlsx
+```
+
+It should be about 12 MB.
+
+---
+
+## 3. One-time environment setup (dev node)
+
+Do **not** run `pip install` on the OnDemand login terminal. Request a short dev session:
+
+```bash
+cd $SCRATCH/Fetch-Learn
+sh_dev -c 4 -t 1:00:00
+bash sherlock/setup_env.sh
+exit
+```
+
+`setup_env.sh` clones catGRANULE 2.0 into `vendor/` (on Sherlock only) and creates a Python 3.9/3.10 virtualenv. That can take several minutes.
+
+---
+
+## 4. Smoke test, then the full job
+
+Still in the OnDemand terminal (login node is fine for `sbatch`):
+
+```bash
+cd $SCRATCH/Fetch-Learn
+sbatch sherlock/smoke.sbatch
+squeue -u $USER
+```
+
+Watch the smoke log:
+
+```bash
+ls -lt logs | head
+tail -f logs/catGRANULE2-smoke-*.out
+```
+
+If the smoke job wrote `data/outputs/Input_260818_catGRANULE2_smoke.xlsx`, submit everyone:
+
+```bash
+cd $SCRATCH/Fetch-Learn
+sbatch sherlock/run_catgranule.sbatch
+squeue -u $USER
+```
+
+The full run is ~15,482 sequences and may take many hours. It checkpoints, so you can resubmit the same `sbatch` if time runs out.
+
+---
+
+## 5. Download the result back to Dropbox
+
+When `squeue -u $USER` no longer shows `catGRANULE2`:
+
+```bash
+ls -lh $SCRATCH/Fetch-Learn/data/outputs/Input_260818_catGRANULE2.xlsx
+```
+
+In OnDemand **Files**, go to `$SCRATCH/Fetch-Learn/data/outputs/`, download `Input_260818_catGRANULE2.xlsx`, and save it into:
+
+`/Users/isabellarus/Library/CloudStorage/Dropbox/Fetch-Learn/data/outputs/`
+
+That file should have the original columns plus **`catGRANULE2`**.
+
+---
+
+## If something fails
+
+- `git clone` asks for a password: the repo is public; use the HTTPS URL above, not SSH.
+- `Input_260818.xlsx` missing: the upload step was skipped or went to a different folder. Re-run `ls` in step 2.
+- `module load python` fails in setup: paste the `module avail python` output and we will pick a 3.9 or 3.10 module.
+- Smoke job in `squeue` with reason `QOSMax...` or `(Priority)`: it is waiting, not dead. Wait and `squeue -u $USER` again.
