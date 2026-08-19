@@ -134,22 +134,49 @@ Setup should print `Scale JSON files: 82` (or more). If it is still ~53, stop an
 
 ---
 
-## TANGO (after you have the academic download)
+## TANGO (Linux 64-bit binary)
 
-Use the **Linux 64-bit** build, not the Mac one. In OnDemand **Files**, upload the TANGO folder to:
+The file name `tango_x86_64_release` is correct. **Do not submit the old sbatch until you `git pull`** — TANGO does not take FASTA; the wrapper now writes TANGO's batch format (max 1000 sequences per file, N-terminus/C-terminus free, pH 7.4, 298 K, ionic 0.05).
 
-`$SCRATCH/Fetch-Learn/vendor/tango/`
-
-The executable is gitignored. Point at it and submit:
+OnDemand terminal:
 
 ```bash
 cd $SCRATCH/Fetch-Learn
-ls vendor/tango
-export TANGO_BIN=$SCRATCH/Fetch-Learn/vendor/tango/tango   # change if the binary name differs
+git pull
+chmod +x vendor/tango/tango_x86_64_release
+# smoke: one sequence, should print help or a score rather than hang
+cd vendor/tango
+printf 'N\n' | ./tango_x86_64_release || true
+cd $SCRATCH/Fetch-Learn
 sbatch sherlock/run_tango.sbatch
+squeue -u $USER
 ```
 
-If the wrapper flags do not match your build, paste `vendor/tango/README` (or `-h` output) and we will adjust `src/annotations/run_tango.py`.
+Output: `$SCRATCH/Fetch-Learn/data/outputs/Input_260818_tango.xlsx` with column `TANGO_aggregation`.
+
+## DeepCoil (sequence mismatches only)
+
+Needs **Python 3.7 or 3.8**, not the catGRANULE 3.9 env. SeqVec weights (~1 GB) download on first run.
+
+```bash
+cd $SCRATCH/Fetch-Learn
+git pull
+sh_dev -c 4 -t 2:00:00
+bash sherlock/setup_deepcoil.sh
+exit
+# upload data/outputs/Input_260818_annotations.xlsx into $SCRATCH/Fetch-Learn/data/outputs/ if it is not already there
+sbatch sherlock/run_deepcoil.sbatch
+```
+
+If `setup_deepcoil.sh` cannot find a 3.8 module, paste `module avail python`.
+
+## Gene4PD website downloads
+
+Copy the six `.txt` files into Dropbox:
+
+`Fetch-Learn/data/cache/gene4pd/`
+
+Keep the original names (Rare genes, Rare variants, Associated SNPs, CNVs, Differential expression, Differential DNA methylation). Then re-run `join_annotations.py` on the Mac.
 
 ## Annotation join on Sherlock (optional)
 

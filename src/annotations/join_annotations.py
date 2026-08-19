@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from gene4pd import lookup as gene4pd_lookup
+from gene4pd import annotate as annotate_gene4pd_layers
 from orthodb import map_entrez_to_uniprot, map_uniprot_to_orthodb
 from slim_phasepred import slim_all
 from urls import cache_dir
@@ -74,8 +74,8 @@ def split_symbols(value: object) -> set[str]:
     return out
 
 
-def annotate_gene4pd(symbols: pd.Series) -> pd.DataFrame:
-    return pd.DataFrame([gene4pd_lookup(v) for v in symbols], index=symbols.index)
+def annotate_gene4pd(symbols: pd.Series, cache: Path) -> pd.DataFrame:
+    return annotate_gene4pd_layers(symbols, cache)
 
 
 def annotate_hagr(df: pd.DataFrame, symbol_col: str, uid_col: str, cache: Path) -> pd.DataFrame:
@@ -180,7 +180,7 @@ def phasepred_columns(rec: dict | None, match: str) -> dict:
     for key in keys:
         out[PHASEPRED_PREFIX + key] = None if use is None else use.get(key)
     out["PhaSePred_needs_DeepCoil"] = match == "sequence_mismatch"
-    out["PhaSePred_needs_ESpritz"] = match == "sequence_mismatch"
+    out["PhaSePred_needs_ESpritz"] = False
     out["PhaSePred_PhosphoSitePlus"] = (
         "lookup_only_canonical" if match == "canonical" else "not_computable_from_sequence"
     )
@@ -209,20 +209,84 @@ def load_cdcode(cache: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     return proteins, relations
 
 
-def annotate_cdcode(uniprot: pd.Series, relations: pd.DataFrame) -> pd.DataFrame:
-    by_uid: dict[str, set[str]] = defaultdict(set)
-    for uid, name in zip(relations["uniprotkb_ac"], relations["condensate_name"]):
+def annotate_cdcode(
+    uniprot: pd.Series, proteins: pd.DataFrame, relations: pd.DataFrame, cache: Path
+) -> pd.DataFrame:
+    folder = cache / "cdcode" / "v2.3"
+    by_uid_names: dict[str, set[str]] = defaultdict(set)
+    by_uid_cids: dict[str, set[str]] = defaultdict(set)
+    for uid, cid, name in zip(
+        relations["uniprotkb_ac"], relations["condensate_id"], relations["condensate_name"]
+    ):
         key = str(uid).split("-")[0].strip().upper()
         if key and key not in {"NAN", "NONE"}:
-            by_uid[key].add(str(name).strip())
+            if str(name).strip() and str(name).strip().lower() != "nan":
+                by_uid_names[key].add(str(name).strip())
+            if str(cid).strip() and str(cid).strip().lower() != "nan":
+                by_uid_cids[key].add(str(cid).strip().upper())
+
+    protein_rows = {
+        str(row["uniprot_id"]).split("-")[0].strip().upper(): row
+        for _, row in proteins.drop_duplicates("uniprot_id").iterrows()
+    }
+
+    patho_by_cid: dict[str, set[str]] = defaultdict(set)
+    patho_path = folder / "condensatopathies.csv"
+    if patho_path.exists():
+        patho = pd.read_csv(patho_path, engine="python", on_bad_lines="skip")
+        for cids, diseases in zip(patho["Affected Condensates"], patho["Diseases"]):
+            disease = str(diseases).strip()
+            if not disease or disease.lower() in {"nan", "null", "null,null"}:
+                continue
+            for cid in str(cids).replace("|", ",").split(","):
+                cid = cid.strip().upper()
+                if cid:
+                    patho_by_cid[cid].add(disease)
+
+    cmod_by_cid: dict[str, set[str]] = defaultdict(set)
+    cmod_path = folder / "c-mods.csv"
+    if cmod_path.exists():
+        cmods = pd.read_csv(cmod_path)
+        name_col = "C-mod name" if "C-mod name" in cmods.columns else cmods.columns[0]
+        cond_col = "Condensates" if "Condensates" in cmods.columns else None
+        if cond_col:
+            for name, cids in zip(cmods[name_col], cmods[cond_col]):
+                label = str(name).strip()
+                if not label or label.lower() == "nan":
+                    continue
+                for cid in str(cids).replace("|", ",").split(","):
+                    cid = cid.strip().upper()
+                    if cid:
+                        cmod_by_cid[cid].add(label)
+
     rows = []
     for uid in uniprot:
         key = str(uid or "").split("-")[0].strip().upper()
-        names = {n for n in by_uid.get(key, set()) if n and n.lower() != "nan"}
+        names = by_uid_names.get(key, set())
+        rec = protein_rows.get(key)
+        cids = by_uid_cids.get(key, set())
+        diseases: set[str] = set()
+        mods: set[str] = set()
+        for cid in cids:
+            diseases |= patho_by_cid.get(cid, set())
+            mods |= cmod_by_cid.get(cid, set())
+        function = None
+        synthetic = None
+        if rec is not None:
+            function = rec.get("function")
+            if isinstance(function, str) and len(function) > 400:
+                function = function[:397] + "..."
+            synthetic = rec.get("synthetic_condensate_count")
         rows.append(
             {
-                "CDCODE_in_database": bool(names),
+                "CDCODE_in_database": rec is not None or bool(names),
                 "CDCODE_condensates": "; ".join(sorted(names)) if names else None,
+                "CDCODE_function": None
+                if not isinstance(function, str) or not function.strip()
+                else function,
+                "CDCODE_synthetic_count": synthetic,
+                "CDCODE_condensatopathies": "; ".join(sorted(diseases)) if diseases else None,
+                "CDCODE_cmods": "; ".join(sorted(mods)) if mods else None,
             }
         )
     return pd.DataFrame(rows, index=uniprot.index)
@@ -353,6 +417,7 @@ def main() -> None:
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
+    parser.add_argument("--skip-orthologs", action="store_true")
     args = parser.parse_args()
 
     cache = cache_dir(args.repo_root)
@@ -369,10 +434,10 @@ def main() -> None:
     cd_proteins, cd_relations = load_cdcode(cache)
 
     parts = [
-        annotate_gene4pd(df[symbol_col]),
+        annotate_gene4pd(df[symbol_col], cache),
         annotate_hagr(df, symbol_col, uid_col, cache),
         annotate_phasepred(df[uid_col], df[seq_col], human),
-        annotate_cdcode(df[uid_col], cd_relations),
+        annotate_cdcode(df[uid_col], cd_proteins, cd_relations, cache),
     ]
     out = pd.concat([df] + parts, axis=1)
 
@@ -380,9 +445,11 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     fasta_path = output.with_name(output.stem + "_phasepred_mismatches.fasta")
     n_mismatch = write_mismatch_fasta(out, uid_col, seq_col, "PhaSePred_match", fasta_path)
-    print(f"Sequence mismatches needing DeepCoil/ESpritz: {n_mismatch} -> {fasta_path}", flush=True)
+    print(f"Sequence mismatches needing DeepCoil: {n_mismatch} -> {fasta_path}", flush=True)
 
-    orth = build_orthologs(df, uid_col, symbol_col, phasepred, cd_proteins, cd_relations, cache)
+    orth = pd.DataFrame()
+    if not args.skip_orthologs:
+        orth = build_orthologs(df, uid_col, symbol_col, phasepred, cd_proteins, cd_relations, cache)
     orth_csv = output.with_name(output.stem + "_orthologs.csv")
     symbol_csv = output.with_name(output.stem + "_orthologs_symbol_match.csv")
     symbol_orth = pd.DataFrame()

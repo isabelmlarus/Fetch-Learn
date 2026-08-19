@@ -98,7 +98,7 @@ python3 src/annotations/join_annotations.py \
 
 Sequence mismatches are listed in `*_phasepred_mismatches.fasta`. PhosphoSitePlus cannot be recomputed from sequence. DeepCoil and ESpritz for those rows need Sherlock installs later (`src/annotations/compute_missing.py`).
 
-**TANGO** (licensed amyloid predictor): download the **Linux 64-bit** build from your academic license page, upload it via OnDemand Files to `$SCRATCH/Fetch-Learn/vendor/tango/`, then `sbatch sherlock/run_tango.sbatch`. Do not commit the binary or the license URL. **Zyggregator** has no local tool; skipped until there is a binary or batch API.
+**TANGO** (licensed amyloid predictor): the Sherlock binary should be `vendor/tango/tango_x86_64_release`. `git pull` on Sherlock first, then `sbatch sherlock/run_tango.sbatch`. Do not commit the binary. **Zyggregator** is skipped. **DeepCoil** for sequence mismatches: `bash sherlock/setup_deepcoil.sh` (Python 3.7/3.8 venv) then `sbatch sherlock/run_deepcoil.sbatch`. **ESpritz** is skipped.
 
 ## Citation
 
