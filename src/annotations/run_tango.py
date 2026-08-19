@@ -112,8 +112,8 @@ def run_batch(
     inp.write_text("\n".join(lines) + "\n")
     before = {p.name for p in work.iterdir()}
 
-    # Filename first, then residue-level (N), then "no pH/temp scan" (0).
-    answers = f"{inp.name}\nN\n0\n"
+    # TANGO 2.3.1 asks residue Y/N first, then the input filename (see b000.log).
+    answers = f"N\n{inp.name}\n0\n"
     proc = subprocess.run(
         [str(binary)],
         cwd=work,
@@ -144,7 +144,7 @@ def run_batch(
             f"exit={proc.returncode}\n"
             f"work dir {work}:\n{listing}\n\n"
             f"log:\n{log.read_text()[-6000:]}\n"
-            "The binary asks for the input filename on stdin; it does not take it as a CLI arg."
+            "The binary asks residue Y/N first, then the input filename on stdin."
         )
     print(
         f"  batch {batch_i}: exit={proc.returncode} new_files={len(created)} scores={len(scores)}",
