@@ -10,21 +10,19 @@
 set -euo pipefail
 REPO_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 VENV_DIR="${DEEPCOIL_VENV:-${SCRATCH:-$HOME}/fetch-learn-deepcoil-venv}"
+PY="${VENV_DIR}/bin/python"
 INPUT="${INPUT_XLSX:-${REPO_DIR}/data/outputs/Input_260818_annotations.xlsx}"
 OUTPUT="${OUTPUT_XLSX:-${REPO_DIR}/data/outputs/Input_260818_deepcoil.xlsx}"
 
 cd "$REPO_DIR"
 mkdir -p logs data/outputs
-if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
-  echo "DeepCoil env missing at ${VENV_DIR}." >&2
+if [[ ! -x "$PY" ]]; then
+  echo "DeepCoil python missing at ${PY}." >&2
   echo "On a compute node run: bash sherlock/setup_deepcoil.sh" >&2
   exit 1
 fi
-# Self-contained Python 3.8 from micromamba; do not load Sherlock python modules.
-# shellcheck disable=SC1091
-source "${VENV_DIR}/bin/activate"
 export PYTHONUNBUFFERED=True
-python -u src/annotations/run_deepcoil.py \
+"$PY" -u src/annotations/run_deepcoil.py \
   --input "$INPUT" \
   --output "$OUTPUT" \
   --n-cpu "${SLURM_CPUS_PER_TASK:-8}"
