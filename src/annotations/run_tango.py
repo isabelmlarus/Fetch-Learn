@@ -1,11 +1,12 @@
-"""Run licensed TANGO on protein sequences (binary is not on GitHub).
+"""Run licensed TANGO 2.3.1 (tango_x86_64_release).
 
-TANGO does not read FASTA. It takes a batch text file of at most 1000 sequences:
-  Name Cter Nter pH Temp Ionic Sequence
-and writes Name.out plus a batch .out with per-sequence averages.
+This binary does **not** take the sequence file as a CLI argument. It prints:
 
-Default executable on Sherlock:
-  $SCRATCH/Fetch-Learn/vendor/tango/tango_x86_64_release
+  Type the name of the file with the peptide names, conditions and sequence...
+  Do you want a prediction per residue?. If yes type Y. Default, N
+
+and writes ``*_aggregation.txt`` (not ``.out``). Answers are sent on stdin.
+Work files are kept under data/outputs/tango_work/ so a failed parse can be inspected.
 """
 
 from __future__ import annotations
@@ -13,14 +14,14 @@ from __future__ import annotations
 import argparse
 import math
 import re
+import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pandas as pd
 
 AA = set("ACDEFGHIKLMNPQRSTVWY")
-BATCH_SIZE = 1000  # TANGO hard limit
+BATCH_SIZE = 1000
 NAME_MAX = 24
 
 
@@ -38,19 +39,46 @@ def tango_name(raw: object, idx: int) -> str:
     return text[:NAME_MAX]
 
 
-def parse_batch_out(path: Path) -> dict[str, float]:
-    """Best-effort parse of TANGO's batch .out (average aggregation per sequence)."""
+def parse_aggregation_file(path: Path) -> dict[str, float]:
+    """Parse TANGO *_aggregation.txt (summary table or per-residue)."""
     scores: dict[str, float] = {}
-    if not path.exists():
+    text = path.read_text(errors="replace")
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
         return scores
-    for line in path.read_text(errors="replace").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+
+    residue_re = re.compile(r"^\s*\d+\s*,\s*[A-Z]\s*,")
+    residue_vals: list[float] = []
+    for line in lines:
+        if residue_re.match(line):
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 6:
+                try:
+                    residue_vals.append(float(parts[5]))
+                except ValueError:
+                    continue
+    if residue_vals:
+        key = path.stem.replace("_aggregation", "")
+        scores[key] = sum(residue_vals) / len(residue_vals)
+        return scores
+
+    agg_idx = None
+    saw_header = False
+    for line in lines:
+        parts = re.split(r"[\t,;]+", line) if ("," in line or "\t" in line) else line.split()
+        joined = " ".join(parts).lower()
+        if not saw_header and ("aggreg" in joined or "name" in joined):
+            saw_header = True
+            header = [p.strip().lower() for p in parts]
+            for i, col in enumerate(header):
+                if "total" in col and "aggreg" in col:
+                    agg_idx = i
+                elif agg_idx is None and "aggreg" in col and "hel" not in col:
+                    agg_idx = i
             continue
-        parts = re.split(r"[,\s]+", line)
         if len(parts) < 2:
             continue
-        name = parts[0]
+        name = parts[0].strip()
         nums = []
         for token in parts[1:]:
             try:
@@ -59,41 +87,69 @@ def parse_batch_out(path: Path) -> dict[str, float]:
                 continue
         if not nums:
             continue
-        # Prefer a column literally named aggregation if present; else last number.
+        if agg_idx is not None and agg_idx < len(parts):
+            try:
+                scores[name] = float(parts[agg_idx])
+                continue
+            except ValueError:
+                pass
         scores[name] = nums[-1]
     return scores
 
 
-def run_batch(binary: Path, rows: list[tuple[str, str]], tmp: Path, batch_i: int, args) -> dict[str, float]:
-    inp = tmp / f"b{batch_i:03d}.txt"
+def run_batch(
+    binary: Path,
+    rows: list[tuple[str, str]],
+    work: Path,
+    batch_i: int,
+    args,
+) -> dict[str, float]:
+    inp = work / f"b{batch_i:03d}.txt"
     lines = [
         f"{name} {args.ct} {args.nt} {args.ph} {args.te} {args.io} {seq}"
         for name, seq in rows
     ]
     inp.write_text("\n".join(lines) + "\n")
-    # TANGO interactively asks whether to write residue-level files; answer No.
+    before = {p.name for p in work.iterdir()}
+
+    # Filename first, then residue-level (N), then "no pH/temp scan" (0).
+    answers = f"{inp.name}\nN\n0\n"
     proc = subprocess.run(
-        [str(binary), inp.name],
-        cwd=tmp,
-        input="N\n",
+        [str(binary)],
+        cwd=work,
+        input=answers,
         capture_output=True,
         text=True,
         check=False,
     )
-    log = tmp / f"b{batch_i:03d}.log"
-    log.write_text(proc.stdout + "\n" + proc.stderr)
-    if proc.returncode != 0:
-        raise SystemExit(
-            f"TANGO batch {batch_i} exited {proc.returncode}.\n"
-            f"stdout/stderr:\n{log.read_text()[-4000:]}\n"
-            "Confirm the binary is executable: chmod +x vendor/tango/tango_x86_64_release"
-        )
-    out_file = tmp / f"b{batch_i:03d}.out"
-    scores = parse_batch_out(out_file)
+    log = work / f"b{batch_i:03d}.log"
+    log.write_text(proc.stdout + "\n--- stderr ---\n" + proc.stderr)
+
+    created = [p for p in work.iterdir() if p.name not in before]
+    scores: dict[str, float] = {}
+    for path in created:
+        if path.suffix.lower() in {".txt", ".out"} and "aggreg" in path.name.lower():
+            scores.update(parse_aggregation_file(path))
+        elif path.suffix.lower() == ".out":
+            scores.update(parse_aggregation_file(path))
+
     if not scores:
-        # Some builds write next to the binary or use the sequence names as files.
-        for path in tmp.glob("*.out"):
-            scores.update(parse_batch_out(path))
+        for path in work.glob("*aggregation*"):
+            scores.update(parse_aggregation_file(path))
+
+    if batch_i == 0 and not scores:
+        listing = "\n".join(f"  {p.name} ({p.stat().st_size} bytes)" for p in sorted(work.iterdir()))
+        raise SystemExit(
+            "TANGO batch 0 produced no aggregation files.\n"
+            f"exit={proc.returncode}\n"
+            f"work dir {work}:\n{listing}\n\n"
+            f"log:\n{log.read_text()[-6000:]}\n"
+            "The binary asks for the input filename on stdin; it does not take it as a CLI arg."
+        )
+    print(
+        f"  batch {batch_i}: exit={proc.returncode} new_files={len(created)} scores={len(scores)}",
+        flush=True,
+    )
     return scores
 
 
@@ -102,23 +158,32 @@ def main() -> None:
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--tango-bin", required=True)
+    parser.add_argument("--work-dir", default=None)
     parser.add_argument("--sequence-column", default="Protein_sequence")
     parser.add_argument("--id-column", default="VidalID")
-    parser.add_argument("--ct", default="N", help="C-terminus: N=free, Y=amidated")
-    parser.add_argument("--nt", default="N", help="N-terminus: N=free, A=acetylated, S=succinylated")
+    parser.add_argument("--limit", type=int, default=None, help="Score only the first N sequences (smoke test).")
+    parser.add_argument("--ct", default="N")
+    parser.add_argument("--nt", default="N")
     parser.add_argument("--ph", default="7.4")
-    parser.add_argument("--te", default="298", help="Temperature in Kelvin")
-    parser.add_argument("--io", default="0.05", help="Ionic strength in M")
+    parser.add_argument("--te", default="298")
+    parser.add_argument("--io", default="0.05")
     args = parser.parse_args()
 
     binary = Path(args.tango_bin).expanduser().resolve()
     if not binary.exists():
-        raise SystemExit(
-            f"TANGO executable not found: {binary}\n"
-            "Expected $SCRATCH/Fetch-Learn/vendor/tango/tango_x86_64_release"
-        )
+        raise SystemExit(f"TANGO executable not found: {binary}")
     if not binary.stat().st_mode & 0o111:
         binary.chmod(binary.stat().st_mode | 0o755)
+
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    work = Path(args.work_dir) if args.work_dir else output.parent / "tango_work"
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    local_bin = work / binary.name
+    shutil.copy2(binary, local_bin)
+    local_bin.chmod(0o755)
 
     df = pd.read_excel(args.input)
     jobs: list[tuple[int, str, str]] = []
@@ -132,27 +197,27 @@ def main() -> None:
             name = tango_name(f"{name}{idx}", int(idx) if isinstance(idx, int) else 0)
         used_names.add(name)
         jobs.append((idx, name, seq))
+        if args.limit is not None and len(jobs) >= args.limit:
+            break
 
     scores: dict[str, float] = {}
     n_batch = max(1, math.ceil(len(jobs) / BATCH_SIZE))
-    print(f"TANGO {len(jobs)} sequences in {n_batch} batches of <={BATCH_SIZE}", flush=True)
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        for b in range(n_batch):
-            chunk = jobs[b * BATCH_SIZE : (b + 1) * BATCH_SIZE]
-            print(f"batch {b + 1}/{n_batch} ({len(chunk)} seqs)", flush=True)
-            scores.update(run_batch(binary, [(n, s) for _, n, s in chunk], tmp_path, b, args))
+    print(f"TANGO {len(jobs)} sequences in {n_batch} batches; work={work}", flush=True)
+    for b in range(n_batch):
+        chunk = jobs[b * BATCH_SIZE : (b + 1) * BATCH_SIZE]
+        print(f"batch {b + 1}/{n_batch} ({len(chunk)} seqs)", flush=True)
+        scores.update(run_batch(local_bin, [(n, s) for _, n, s in chunk], work, b, args))
 
     df["TANGO_aggregation"] = None
     name_by_idx = {idx: name for idx, name, _ in jobs}
     for idx, name in name_by_idx.items():
         if name in scores:
             df.at[idx, "TANGO_aggregation"] = scores[name]
-    n_scored = df["TANGO_aggregation"].notna().sum()
+    n_scored = int(df["TANGO_aggregation"].notna().sum())
     print(f"Parsed TANGO scores for {n_scored}/{len(jobs)} sequences", flush=True)
+    if n_scored == 0:
+        raise SystemExit(f"No scores parsed. Inspect {work} (logs and *_aggregation.txt).")
 
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
     df.to_excel(output, index=False)
     print(f"Wrote {output}", flush=True)
 

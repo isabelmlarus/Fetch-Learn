@@ -34,7 +34,13 @@ done
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 export PYTHONUNBUFFERED=True
+LIMIT_ARGS=()
+if [[ -n "${TANGO_LIMIT:-}" ]]; then
+  LIMIT_ARGS=(--limit "$TANGO_LIMIT")
+fi
 python -u src/annotations/run_tango.py \
   --input "$INPUT" \
   --output "$OUTPUT" \
-  --tango-bin "$TANGO_BIN"
+  --tango-bin "$TANGO_BIN" \
+  --work-dir "${REPO_DIR}/data/outputs/tango_work" \
+  "${LIMIT_ARGS[@]}"
