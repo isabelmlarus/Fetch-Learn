@@ -9,6 +9,9 @@ data/cache/
 
 # catGRANULE 2.0 clone and Python env (created on Sherlock)
 vendor/
+tango_x86_64_release
+tango*.zip
+*.linux64.zip
 .venv/
 venv/
 env/
