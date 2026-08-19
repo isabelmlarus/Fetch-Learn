@@ -76,6 +76,30 @@ Short version:
 
 Setup uses Python **3.9 or 3.10** because the published models need `scikit-learn==1.1.1`.
 
+## Public annotation lookups
+
+[`src/annotations/`](src/annotations/) downloads caches into Dropbox `data/cache/` (gitignored) and joins them onto the Excel. This does **not** need Sherlock unless you later compute DeepCoil, ESpritz, or TANGO.
+
+```bash
+# From the Mac Dropbox copy of this repo (needs pandas + curl)
+python3 src/annotations/download.py
+python3 src/annotations/join_annotations.py \
+  --input data/inputs/Input_260818.xlsx \
+  --output data/outputs/Input_260818_annotations.xlsx
+```
+
+| Source | What is joined | Notes |
+| --- | --- | --- |
+| Gene4PD | `Gene4PD_tier`, `Gene4PD_known_PD_causing` | Live site blocks downloads; uses Zhao et al. 2021 Table 1 (124 PAGs). |
+| HAGR | GenAge human, CellAge, CellAge signatures, LongevityMap; GenAge models via OrthoDB | https://genomics.senescence.info/download.html |
+| PhaSePred | SaPS/PdPS 8- and 10-feature models plus PLAAC, PScore, IDR, hydropathy, DeepCoil, LCR, FCR, Phos, DeepPhase | Copied **only** when `Protein_sequence` matches the UniProt canonical sequence. Other species are limited to OrthoDB orthologs. |
+| CD-CODE v2.3 | `CDCODE_in_database`, `CDCODE_condensates` | Public dump; human UniProt match plus OrthoDB orthologs in the dump. |
+| OrthoDB | Ortholog sheet / `*_orthologs.csv` | Only species that actually appear in PhaSePred or CD-CODE. |
+
+Sequence mismatches are listed in `*_phasepred_mismatches.fasta`. PhosphoSitePlus cannot be recomputed from sequence. DeepCoil and ESpritz for those rows need Sherlock installs later (`src/annotations/compute_missing.py`).
+
+**TANGO** (licensed amyloid predictor): download the **Linux 64-bit** build from your academic license page, upload it via OnDemand Files to `$SCRATCH/Fetch-Learn/vendor/tango/`, then `sbatch sherlock/run_tango.sbatch`. Do not commit the binary or the license URL. **Zyggregator** has no local tool; skipped until there is a binary or batch API.
+
 ## Citation
 
 Monti, Fiorentino, et al. catGRANULE 2.0: accurate predictions of liquid-liquid phase separating proteins at single amino acid resolution. *Genome Biology* (2025).

@@ -1,9 +1,11 @@
 # Data stays on Dropbox, not GitHub
 data/inputs/
 data/outputs/
+data/cache/
 *.xlsx
 *.xls
 *.csv
+*.fasta
 
 # catGRANULE 2.0 clone and Python env (created on Sherlock)
 vendor/

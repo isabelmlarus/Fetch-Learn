@@ -131,3 +131,40 @@ Setup should print `Scale JSON files: 82` (or more). If it is still ~53, stop an
 - `Input_260818.xlsx` missing: the upload step was skipped or went to a different folder. Re-run `ls` in step 2.
 - `module load python` fails in setup: paste the `module avail python` output and we will pick a 3.9 or 3.10 module.
 - Smoke job in `squeue` with reason `QOSMax...` or `(Priority)`: it is waiting, not dead. Wait and `squeue -u $USER` again.
+
+---
+
+## TANGO (after you have the academic download)
+
+Use the **Linux 64-bit** build, not the Mac one. In OnDemand **Files**, upload the TANGO folder to:
+
+`$SCRATCH/Fetch-Learn/vendor/tango/`
+
+The executable is gitignored. Point at it and submit:
+
+```bash
+cd $SCRATCH/Fetch-Learn
+ls vendor/tango
+export TANGO_BIN=$SCRATCH/Fetch-Learn/vendor/tango/tango   # change if the binary name differs
+sbatch sherlock/run_tango.sbatch
+```
+
+If the wrapper flags do not match your build, paste `vendor/tango/README` (or `-h` output) and we will adjust `src/annotations/run_tango.py`.
+
+## Annotation join on Sherlock (optional)
+
+Lookups normally run on the Mac. If you instead download caches on Sherlock:
+
+```bash
+cd $SCRATCH/Fetch-Learn
+git pull
+sh_dev -c 4 -t 2:00:00
+source $SCRATCH/fetch-learn-venv/bin/activate
+python src/annotations/download.py
+python src/annotations/join_annotations.py \
+  --input data/inputs/Input_260818.xlsx \
+  --output data/outputs/Input_260818_annotations.xlsx
+exit
+```
+
+Or `sbatch sherlock/run_annotations.sbatch` after `download.py` has filled `data/cache/`.
