@@ -144,12 +144,12 @@ OnDemand terminal:
 cd $SCRATCH/Fetch-Learn
 git pull
 chmod +x vendor/tango/tango_x86_64_release
-# smoke: one sequence, should print help or a score rather than hang
-cd vendor/tango
-printf 'N\n' | ./tango_x86_64_release || true
-cd $SCRATCH/Fetch-Learn
+# smoke test: 3 sequences. Should print scores=3, not scores=0.
+export TANGO_LIMIT=3
 sbatch sherlock/run_tango.sbatch
-squeue -u $USER
+# if the smoke Excel has TANGO_aggregation filled, run everyone:
+unset TANGO_LIMIT
+sbatch sherlock/run_tango.sbatch
 ```
 
 Output: `$SCRATCH/Fetch-Learn/data/outputs/Input_260818_tango.xlsx` with column `TANGO_aggregation`.
