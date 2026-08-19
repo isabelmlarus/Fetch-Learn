@@ -1,35 +1,34 @@
 #!/bin/bash
-# Install DeepCoil 2.0 into its own Sherlock venv.
-# DeepCoil needs Python 3.7 or 3.8 (not the 3.9/3.10 catGRANULE env).
-# Run once on a compute node: sh_dev -c 4 -t 2:00:00 && bash sherlock/setup_deepcoil.sh
+# Install DeepCoil 2.0 into its own env with Python 3.8.
+# Sherlock has no python/3.7 or python/3.8 module, so this bootstraps
+# micromamba + Python 3.8 in $SCRATCH (do not use catGRANULE's 3.9 env).
+# Run on a compute node: sh_dev -c 4 -t 2:00:00
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VENV_DIR="${DEEPCOIL_VENV:-${SCRATCH:-$HOME}/fetch-learn-deepcoil-venv}"
+MAMBA_ROOT="${MAMBA_ROOT_PREFIX:-${SCRATCH:-$HOME}/micromamba}"
+MICROMAMBA="${MAMBA_ROOT}/bin/micromamba"
 
-module purge || true
-loaded=""
-for ver in python/3.8.8 python/3.8.6 python/3.8 python/3.7.13 python/3.7; do
-  if module load "$ver" 2>/dev/null; then
-    loaded="$ver"
-    break
-  fi
-done
-if [[ -z "$loaded" ]]; then
-  echo "DeepCoil needs Python 3.7 or 3.8. Available python modules:" >&2
-  module avail python 2>&1 || true
-  exit 1
+mkdir -p "$MAMBA_ROOT/bin"
+
+if [[ ! -x "$MICROMAMBA" ]]; then
+  echo "Downloading micromamba into ${MAMBA_ROOT}"
+  curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C "$MAMBA_ROOT" bin/micromamba
 fi
-echo "Using module: ${loaded} ($(python3 --version))"
 
-python3 -m venv "$VENV_DIR"
+echo "Creating Python 3.8 env at ${VENV_DIR}"
+"$MICROMAMBA" create -y -p "$VENV_DIR" -c conda-forge python=3.8 pip
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 python -m pip install --upgrade pip
 python -m pip install 'deepcoil==2.0.2' openpyxl
 python - <<'PY'
+import sys
+print("Python", sys.version)
 from deepcoil import DeepCoil
-print("Import OK. First prediction will download SeqVec weights (~1 GB) into the user cache.")
+print("DeepCoil import OK. First prediction downloads SeqVec weights (~1 GB).")
 PY
-echo "DeepCoil venv: ${VENV_DIR}"
+echo
+echo "DeepCoil env: ${VENV_DIR}"
 echo "Activate with: source ${VENV_DIR}/bin/activate"
+echo "Then submit: sbatch sherlock/run_deepcoil.sbatch"

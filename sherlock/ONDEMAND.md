@@ -156,7 +156,7 @@ Output: `$SCRATCH/Fetch-Learn/data/outputs/Input_260818_tango.xlsx` with column 
 
 ## DeepCoil (sequence mismatches only)
 
-Needs **Python 3.7 or 3.8**, not the catGRANULE 3.9 env. SeqVec weights (~1 GB) download on first run.
+Needs **Python 3.8**. Sherlock does not ship a 3.7/3.8 module, so `setup_deepcoil.sh` installs micromamba + Python 3.8 under `$SCRATCH`. Do not use the catGRANULE 3.9 env. SeqVec weights (~1 GB) download on first prediction.
 
 ```bash
 cd $SCRATCH/Fetch-Learn
@@ -167,8 +167,6 @@ exit
 # upload data/outputs/Input_260818_annotations.xlsx into $SCRATCH/Fetch-Learn/data/outputs/ if it is not already there
 sbatch sherlock/run_deepcoil.sbatch
 ```
-
-If `setup_deepcoil.sh` cannot find a 3.8 module, paste `module avail python`.
 
 ## Gene4PD website downloads
 

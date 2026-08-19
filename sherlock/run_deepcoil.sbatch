@@ -15,12 +15,12 @@ OUTPUT="${OUTPUT_XLSX:-${REPO_DIR}/data/outputs/Input_260818_deepcoil.xlsx}"
 
 cd "$REPO_DIR"
 mkdir -p logs data/outputs
-module purge || true
-for ver in python/3.8.8 python/3.8.6 python/3.8 python/3.7; do
-  if module load "$ver" 2>/dev/null; then
-    break
-  fi
-done
+if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
+  echo "DeepCoil env missing at ${VENV_DIR}." >&2
+  echo "On a compute node run: bash sherlock/setup_deepcoil.sh" >&2
+  exit 1
+fi
+# Self-contained Python 3.8 from micromamba; do not load Sherlock python modules.
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 export PYTHONUNBUFFERED=True
