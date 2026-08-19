@@ -2,8 +2,9 @@
 # DeepCoil 2.0 needs Python 3.7 so pip can use old manylinux wheels
 # (preshed/allennlp 0.9). Python 3.8 forces a source build that fails, and
 # conda-solving tensorflow+pytorch together gets OOM-killed on a small sh_dev.
-# Run on a compute node with enough RAM, e.g.:
-#   sh_dev -c 4 --mem=16G -t 2:00:00
+# Run unattended with: sbatch sherlock/run_deepcoil.sbatch
+# Interactive (optional): sh_dev -c 4 -m 16000 -t 2:00:00
+# (-m is MB; 16000 = 16 GB. Do not use --mem with sh_dev.)
 set -euo pipefail
 
 VENV_DIR="${DEEPCOIL_VENV:-${SCRATCH:-$HOME}/fetch-learn-deepcoil-venv}"

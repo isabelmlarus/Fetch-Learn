@@ -156,17 +156,21 @@ Output: `$SCRATCH/Fetch-Learn/data/outputs/Input_260818_tango.xlsx` with column 
 
 ## DeepCoil (sequence mismatches only)
 
-Needs **Python 3.7** (micromamba; Sherlock has no 3.7 module). Use a **16G** dev node so the install is not OOM-killed:
+Needs **Python 3.7** (micromamba). You do **not** need `sh_dev`. Submit from the **login node** and go to sleep. Sherlock emails you when the job ends if mail is configured on the account.
+
+**Before you leave**, upload Dropbox `data/outputs/Input_260818_annotations.xlsx` into `$SCRATCH/Fetch-Learn/data/outputs/` if it is not already there. Then:
 
 ```bash
 cd $SCRATCH/Fetch-Learn
 git pull
-sh_dev -c 4 --mem=16G -t 2:00:00
-bash sherlock/setup_deepcoil.sh
-exit
-# upload data/outputs/Input_260818_annotations.xlsx into $SCRATCH/Fetch-Learn/data/outputs/ if it is not already there
+ls -lh data/outputs/Input_260818_annotations.xlsx
 sbatch sherlock/run_deepcoil.sbatch
+squeue -u $USER
 ```
+
+That one job installs DeepCoil if needed, then scores the sequence mismatches (up to 36 hours, 64 GB, `normal` partition). Result: `data/outputs/Input_260818_deepcoil.xlsx`.
+
+If you ever use `sh_dev` again: memory is `-m` in **MB**, not `--mem`. Example: `sh_dev -c 4 -m 16000 -t 2:00:00`.
 
 ## Gene4PD website downloads
 
