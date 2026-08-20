@@ -34,13 +34,14 @@ done
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 export PYTHONUNBUFFERED=True
-LIMIT_ARGS=()
+# set -u treats an empty LIMIT_ARGS=() as unbound; keep required flags in ARGS always.
+ARGS=(
+  --input "$INPUT"
+  --output "$OUTPUT"
+  --tango-bin "$TANGO_BIN"
+  --work-dir "${REPO_DIR}/data/outputs/tango_work"
+)
 if [[ -n "${TANGO_LIMIT:-}" ]]; then
-  LIMIT_ARGS=(--limit "$TANGO_LIMIT")
+  ARGS+=(--limit "$TANGO_LIMIT")
 fi
-python -u src/annotations/run_tango.py \
-  --input "$INPUT" \
-  --output "$OUTPUT" \
-  --tango-bin "$TANGO_BIN" \
-  --work-dir "${REPO_DIR}/data/outputs/tango_work" \
-  "${LIMIT_ARGS[@]}"
+python -u src/annotations/run_tango.py "${ARGS[@]}"
